@@ -19,7 +19,11 @@ object ScalaKafkaStreaming {
      // The master requires 2 cores to prevent a starvation scenario.
 
      val confi = new SparkConf().setMaster("local[2]").setAppName("NetworkWordCount")
-     val ssc=new StreamingContext(confi,Seconds(20))
+    //val sc=new SparkContext(confi).setLogLevel("Error")
+    //val ssc=StreamingContext
+     val ssc=new StreamingContext(confi,Seconds(30))
+    ssc.sparkContext.setLogLevel("Error")
+
     ssc.checkpoint(checkpointPath)
 
     val bootstrapServers = "localhost:9092"
@@ -37,16 +41,61 @@ object ScalaKafkaStreaming {
 
     val kafkaTopicDS = KafkaUtils.createDirectStream(ssc, LocationStrategies.PreferConsistent,
       ConsumerStrategies.Subscribe[String, String](Set("test"), kafkaParams))
+    val updateFunc=(values:Seq[Int],state:Option[Int])=>{
+      val currentCount=values.foldLeft(0)(_+_)
+      val previousCount=state.getOrElse(0)
+      Some(currentCount+previousCount)
+    }
 
-    kafkaTopicDS.map(_.value)
-      .flatMap(_.split(" "))
-      .map(x => (x, 1L))
-      .reduceByKey(_ + _)
-      .transform(data => {
-        val sortData = data.sortBy(_._2, false)
-        sortData
-      })
-      .print()
+
+    val updateFunc2=(values:Seq[Double],state:Option[Double])=>{
+      val currentCount=values.foldLeft(0.0)(_+_)
+      val previousCount=state.getOrElse(0.0)
+      Some(currentCount+previousCount)
+    }
+    //
+    val beforemulti=(x:Array[String])=>{
+      val label=x(0);
+      val extent=x(1).toDouble * x(2).toDouble;
+      //val circulation=x(1).toDouble
+      (label,x(1).toDouble,extent);
+    }
+    val getOneAndTwo=(x:Tuple3[String,Double,Double])=>{
+      (x._1,x._2)
+    }
+    val getOneAndThree=(x:Tuple3[String,Double,Double])=>{
+      (x._1,x._3)
+    }
+    val lines=kafkaTopicDS
+    val words=lines.map(_.value)
+    //flatMap(_.split(" "))
+    val numerator=kafkaTopicDS.map(_.value).map(_.split(" ")).map(beforemulti);
+    val lowersum=numerator.map(getOneAndTwo).updateStateByKey(updateFunc2);
+    val upsum  =numerator.map(getOneAndThree).updateStateByKey(updateFunc2)
+    val tmp=lowersum.join(upsum).map(x=>{
+      val numerator=x._2._2
+      val denominator=x._2._1
+      var ans=0.0
+      if(denominator!=0){ans=numerator/denominator}
+      (x._1,ans)
+    }).print()
+    upsum.print()
+    lowersum.print()
+
+
+    //val pairs = words.map { word => (word, 1)}
+    //pairs.map(word=>(word,"!!!!!~!!!!")).print()
+    //val wordCounts = pairs.reduceByKey(_ + _)
+   // val wordCounts=pairs.updateStateByKey[Int](updateFunc)
+   // wordCounts.print()
+    //      .flatMap(_.split(" "))
+//      .map(x => (x, 1L))
+//      .reduceByKey(_ + _)
+//      .transform(data => {
+//        val sortData = data.sortBy(_._2, false)
+//        sortData
+//      })
+//      .print()
 
     ssc.start()
     ssc.awaitTermination()
