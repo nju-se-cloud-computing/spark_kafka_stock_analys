@@ -1,8 +1,14 @@
+import java.util.Properties
+
+import com.mongodb.spark.MongoSpark
+import com.mongodb.spark.config.WriteConfig
 import org.apache.kafka.clients.consumer.ConsumerConfig
-import org.apache.kafka.common.serialization.StringDeserializer
+import org.apache.kafka.common.serialization.{StringDeserializer, StringSerializer}
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.streaming.kafka010.{ConsumerStrategies, KafkaUtils, LocationStrategies}
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.{SparkConf, SparkContext}
+import org.bson.Document
 
 object ScalaKafkaStreaming {
   def main(args: Array[String]): Unit = {
@@ -55,7 +61,7 @@ object ScalaKafkaStreaming {
     }
     //
     val beforemulti=(x:Array[String])=>{
-      val label=x(0);
+      val label=x(0)+" "+x(3);
       val extent=x(1).toDouble * x(2).toDouble;
       //val circulation=x(1).toDouble
       (label,x(1).toDouble,extent);
@@ -75,12 +81,36 @@ object ScalaKafkaStreaming {
     val tmp=lowersum.join(upsum).map(x=>{
       val numerator=x._2._2
       val denominator=x._2._1
+      val stri=x._1.split(" ")
       var ans=0.0
-      if(denominator!=0){ans=numerator/denominator}
-      (x._1,ans)
-    }).print()
+      //if(denominator!=0){ans=numerator/denominator}
+      (stri(0),stri(1),numerator)
+    })
     upsum.print()
     lowersum.print()
+
+
+
+    val uri="mongodb+srv://Frank:123456789shi@cluster0.2hsme.gcp.mongodb.net/Homework.test3?retryWrites=true&w=majority"
+    val options = scala.collection.mutable.Map(
+
+      //大多数情况下从primary的replica set读，当其不可用时，从其secondary members读
+      "readPreference.name" -> "primaryPreferred",
+
+      "spark.mongodb.input.uri" -> uri,
+      "spark.mongodb.output.uri" -> uri)
+
+    val writeConfig=WriteConfig(options)
+    val documents=tmp.map(temp=>{
+
+    var docMap=  new Document("module",temp._1);
+      docMap.append("data",temp._2)
+    docMap.append("numerator",temp._3.toString)
+      //print(docMap.entrySet())
+    docMap
+    })
+    documents.foreachRDD(rdd=>{MongoSpark.save(rdd, writeConfig)})
+
 
 
     //val pairs = words.map { word => (word, 1)}
