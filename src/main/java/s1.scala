@@ -104,7 +104,7 @@ object ScalaKafkaStreaming {
     val documents=tmp.map(temp=>{
 
     var docMap=  new Document("module",temp._1);
-      docMap.append("data",temp._2)
+      docMap.append("date",temp._2)
     docMap.append("numerator",temp._3.toString)
       //print(docMap.entrySet())
     docMap
